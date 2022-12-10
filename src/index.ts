@@ -7,7 +7,12 @@ const config = {
   AutoReply: true,
   MakeFriend: true,
   ChatGPTSessionToken: ''
-}
+};
+
+const PREFIX = '#ai ';
+const AI_ANSWER = () => {
+  return '---AI机器人🤖️为您解答---\n';
+};
 
 const conversationMap = new Map();
 const chatGPT = new ChatGPTAPI({ sessionToken: config.ChatGPTSessionToken })
@@ -39,15 +44,18 @@ async function getChatGPTReply(content, contactId) {
 }
 
 async function replyMessage(contact, content, contactId) {
-  try {
-    const reply = await getChatGPTReply(content, contactId);
-    await contact.say(reply);
-  } catch (e: any) {
-    console.error(e);
-    if(e.message.includes('timed out')) {
-      await contact.say('Please try again, ChatGPT timed out waiting for response.');
+  // 必须以PREFIX开头的消息才进行AI回复
+  if (content.startsWith(PREFIX)) {
+    try {
+      const reply = await getChatGPTReply(content.substring(PREFIX.length), contactId);
+      await contact.say(AI_ANSWER() + reply);
+    } catch (e: any) {
+      console.error(e);
+      if(e.message.includes('timed out')) {
+        await contact.say('Please try again, ChatGPT timed out waiting for response.');
+      }
+      conversationMap.delete(contactId);
     }
-    conversationMap.delete(contactId);
   }
 }
 
@@ -59,13 +67,16 @@ async function onMessage(msg) {
   const room = msg.room(); 
   const alias = await contact.alias() || await contact.name();
   const isText = msg.type() === bot.Message.Type.Text;
-  if (msg.self()) {
-    return;
-  }
 
   if (room && isText) {
     const topic = await room.topic();
     console.log(`Group name: ${topic} talker: ${await contact.name()} content: ${content}`);
+    
+    if (content) {
+      replyMessage(room, content, contactId);
+    }
+
+    // 被@时候接收的信息
     if (await msg.mentionSelf()) {
       const [groupContent] = content.split(`@${receiver.name()}`).filter(item => item.trim())
       replyMessage(room, groupContent.trim(), contactId)
